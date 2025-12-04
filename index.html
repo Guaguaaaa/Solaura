@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>solaura.app | Solar-Infused Field</title>
+
+    <!-- Fonts: Outfit (Rounded Sans) and Space Mono (Tech/Geek) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <!-- Three.js from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <style>
+        /* --- RESET & BASE --- */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --text-main: #ffffff;
+            --text-sub: rgba(255, 255, 255, 0.85);
+            --accent-glow: rgba(255, 223, 158, 0.6);
+
+            --font-main: 'Outfit', sans-serif;
+            --font-mono: 'Space Mono', monospace;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            background-color: #0b0f1a; /* Fallback deep night */
+            color: var(--text-main);
+            font-family: var(--font-main);
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* --- WEBGL CANVAS --- */
+        #gl-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        /* --- NOISE GRAIN OVERLAY (Cosmic Dust Texture) --- */
+        .noise-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 2;
+            opacity: 0.06;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='1'/%3E%3C/svg%3E");
+            mix-blend-mode: overlay;
+        }
+
+        /* --- UI LAYER --- */
+        .ui-layer {
+            position: relative;
+            z-index: 10;
+            height: 100%;
+            width: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 40px;
+        }
+
+        /* Center Content */
+        .center-content {
+            position: absolute;
+            top: 45%; /* Slightly higher to sit above the "sun" */
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            pointer-events: auto;
+            /* Subtly blend text with the light field */
+            text-shadow: 0 4px 30px rgba(0,0,0,0.3);
+        }
+
+        h1.brand {
+            font-size: 4rem;
+            font-weight: 300;
+            letter-spacing: -0.03em;
+            margin: 0;
+            background: linear-gradient(180deg, #ffffff 20%, rgba(255,255,255,0.8) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            /* Soft solar glow around text */
+            filter: drop-shadow(0 0 20px rgba(255, 200, 150, 0.3));
+        }
+
+        p.poetic {
+            font-family: var(--font-main);
+            font-size: 1.1rem;
+            letter-spacing: 0.12em;
+            margin-top: 1.2rem;
+            color: var(--text-sub);
+            font-weight: 300;
+            opacity: 0.95;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+        }
+
+        /* Navigation / Footer */
+        .nav-dock {
+            position: absolute;
+            bottom: 40px;
+            width: 100%;
+            left: 0;
+            display: flex;
+            justify-content: center;
+            gap: 2.5rem;
+            pointer-events: auto;
+        }
+
+        .nav-link {
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            color: rgba(255, 255, 255, 0.6);
+            text-decoration: none;
+            transition: all 0.4s ease;
+            position: relative;
+            padding: 5px 10px;
+            letter-spacing: 0.05em;
+        }
+
+        .nav-link:hover {
+            color: #fff;
+            text-shadow: 0 0 12px rgba(255, 223, 158, 0.8);
+        }
+
+        /* --- RESPONSIVE --- */
+        @media (max-width: 768px) {
+            h1.brand { font-size: 2.8rem; }
+            .nav-dock { flex-direction: row; gap: 1.5rem; bottom: 30px; }
+            .ui-layer { padding: 20px; }
+            p.poetic { font-size: 0.95rem; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- WebGL Canvas -->
+<canvas id="gl-canvas"></canvas>
+
+<!-- Grain Overlay -->
+<div class="noise-overlay"></div>
+
+<!-- UI Overlay -->
+<div class="ui-layer">
+    <!-- Top area reserved -->
+    <div></div>
+
+    <!-- Center Content -->
+    <div class="center-content">
+        <h1 class="brand">solaura.app</h1>
+        <p class="poetic">在 0° 坐标拥抱一道例外的光</p>
+    </div>
+
+    <!-- Bottom Navigation -->
+    <div class="nav-dock">
+        <a href="#" class="nav-link">.experiments</a>
+        <a href="#" class="nav-link">.playground</a>
+        <a href="#" class="nav-link">.0° N signal</a>
+    </div>
+</div>
+
+<!-- Generative Art Script -->
+<script>
+    /**
+     * SOLAURA GENERATIVE ENGINE v2.0
+     * Tech: Three.js + Custom GLSL Shaders
+     * Concept: "Solar-Aurora" - A solar-sourced light field simulation.
+     */
+
+    const canvas = document.getElementById('gl-canvas');
+
+    // --- 1. Scene Setup ---
+    const scene = new THREE.Scene();
+    const camera = new THREE.OrthographicCamera( -1, 1, 1, -1, 0.1, 10 );
+    camera.position.z = 1;
+
+    const renderer = new THREE.WebGLRenderer({
+        canvas: canvas,
+        antialias: true,
+        alpha: false
+    });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    // --- 2. Dynamic Time Logic ---
+    // Calculates a float 0.0 -> 1.0 representing the "warmth/solar intensity"
+    const getSolarIntensity = () => {
+        const date = new Date();
+        const hour = date.getHours() + date.getMinutes()/60;
+
+        // Peak solar warmth (sunset/sunrise vibes) around 6-9 AM/PM
+        // Night (0.0 intensity) around 2 AM. Day (1.0) around Noon-Sunset.
+        // Simplified curve:
+        // 0 (midnight) -> 0.2
+        // 6 (sunrise) -> 0.8
+        // 12 (noon) -> 0.9
+        // 18 (sunset) -> 1.0 (Peak dramatic color)
+        // 23 (night) -> 0.3
+
+        // Just returning a normalized phase for the shader to interpret
+        // 0.0 = Deep Night (Cyan/Green), 1.0 = Peak Solar (Orange/Rose)
+
+        if (hour > 6 && hour < 20) return 1.0; // Day/Sunset Mode
+        return 0.0; // Night Mode (lerping happens in shader or here)
+    };
+
+    // We will pass the exact hour to the shader to let it handle smooth transitions
+    // 0.0 to 24.0
+    const getCurrentTimeFloat = () => {
+        const d = new Date();
+        return d.getHours() + d.getMinutes()/60;
+    }
+
+    // --- 3. BACKGROUND SHADER (The Field) ---
+
+    const bgVertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+
+    const bgFragmentShader = `
+            uniform float uTime;
+            uniform vec2 uResolution;
+            uniform vec2 uMouse;
+            uniform float uDayHour; // 0.0 - 24.0
+
+            varying vec2 vUv;
+
+            // --- Noise Functions ---
+            vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+            vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+            vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
+            float snoise(vec2 v) {
+                const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
+                vec2 i  = floor(v + dot(v, C.yy) );
+                vec2 x0 = v - i + dot(i, C.xx);
+                vec2 i1;
+                i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+                vec4 x12 = x0.xyxy + C.xxzz;
+                x12.xy -= i1;
+                i = mod289(i);
+                vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 ));
+                vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+                m = m*m ;
+                m = m*m ;
+                vec3 x = 2.0 * fract(p * C.www) - 1.0;
+                vec3 h = abs(x) - 0.5;
+                vec3 ox = floor(x + 0.5);
+                vec3 a0 = x - ox;
+                m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
+                vec3 g;
+                g.x  = a0.x  * x0.x  + h.x  * x0.y;
+                g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+                return 130.0 * dot(m, g);
+            }
+
+            // FBM for fluid-like motion
+            float fbm(vec2 st) {
+                float value = 0.0;
+                float amplitude = 0.5;
+                for (int i = 0; i < 4; i++) {
+                    value += amplitude * snoise(st);
+                    st *= 2.0;
+                    amplitude *= 0.5;
+                }
+                return value;
+            }
+
+            void main() {
+                // Fix Aspect Ratio
+                vec2 st = vUv;
+                st.x *= uResolution.x / uResolution.y;
+
+                // --- 1. Solar Bloom / Radiance Source ---
+                // Simulates the sun just below the horizon/equator
+                // Center X, slightly below bottom Y (-0.2)
+                vec2 sunPos = vec2(uResolution.x/uResolution.y * 0.5, -0.4);
+                float sunDist = distance(st, sunPos);
+
+                // Mouse Interaction: Bends the light slightly
+                // We distort the UVs based on mouse proximity
+                float mouseDist = distance(st, uMouse * vec2(uResolution.x/uResolution.y, 1.0));
+                vec2 mouseForce = (st - (uMouse * vec2(uResolution.x/uResolution.y, 1.0)));
+
+                // Add magnetic deflection
+                st += mouseForce * 0.03 * smoothstep(0.5, 0.0, mouseDist);
+
+                // --- 2. Domain Warping (The Aurora) ---
+                vec2 q = vec2(0.);
+                q.x = fbm( st + 0.05 * uTime );
+                q.y = fbm( st + vec2(1.0));
+
+                vec2 r = vec2(0.);
+                r.x = fbm( st + 1.0*q + vec2(1.7,9.2)+ 0.15*uTime );
+                r.y = fbm( st + 1.0*q + vec2(8.3,2.8)+ 0.126*uTime);
+
+                float f = fbm(st + r);
+
+                // --- 3. Palette System ---
+
+                // Determine mix factor based on hour (Soft transitions)
+                // Night (0-5, 20-24), Day/Sunset (6-19)
+                float dayMix = smoothstep(5.0, 8.0, uDayHour) - smoothstep(19.0, 21.0, uDayHour);
+
+                // PALETTE: NIGHT (Warm-sourced deep teal/green)
+                vec3 n_bg = vec3(0.02, 0.04, 0.08); // Deep space
+                vec3 n_aurora1 = vec3(0.0, 0.4, 0.45); // Teal
+                vec3 n_aurora2 = vec3(0.1, 0.6, 0.3);  // Greenish
+                vec3 n_sun = vec3(0.1, 0.2, 0.3); // Faint blue glow
+
+                // PALETTE: DAY/SUNSET (Equator Warmth)
+                vec3 d_bg = vec3(0.15, 0.05, 0.05); // Warm darkish
+                vec3 d_aurora1 = vec3(1.0, 0.4, 0.3); // Coral/Orange
+                vec3 d_aurora2 = vec3(0.8, 0.2, 0.5); // Rose/Purple
+                vec3 d_sun = vec3(1.0, 0.6, 0.2); // Golden Sun
+
+                // Mix palettes
+                vec3 bg = mix(n_bg, d_bg, dayMix);
+                vec3 c1 = mix(n_aurora1, d_aurora1, dayMix);
+                vec3 c2 = mix(n_aurora2, d_aurora2, dayMix);
+                vec3 sunColor = mix(n_sun, d_sun, dayMix);
+
+                // --- 4. Composition ---
+
+                // Base background + Solar Bloom
+                // The sun bloom is a radial gradient from the bottom
+                float bloom = smoothstep(1.5, 0.2, sunDist); // Glow intensity
+                vec3 color = mix(bg, sunColor, bloom * 0.6);
+
+                // Aurora Bands
+                // We use the noise 'f' and warped coords 'q' to create ribbons
+                float auroraMask = smoothstep(0.0, 1.2, r.y * 1.5) * smoothstep(0.0, 1.0, 1.0-st.y); // Fade out at very top
+
+                vec3 aurora = mix(c1, c2, clamp(f*2.0, 0.0, 1.0));
+
+                // Add Aurora to Background (Screen blendish)
+                color += aurora * auroraMask * 0.6;
+
+                // Extra intense ribbon core
+                color += c2 * smoothstep(0.4, 0.6, f) * auroraMask * 0.5;
+
+                // Final soft atmospheric scattering
+                // (Simulates air thickness near bottom)
+                color = mix(color, sunColor, (1.0 - vUv.y) * 0.2 * dayMix);
+
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `;
+
+    // --- 4. PARTICLES (Solar Motes) ---
+    // We add drifting particles that move upward like solar wind
+
+    const particleVertexShader = `
+            uniform float uTime;
+            attribute float aScale;
+            attribute float aRandom;
+            varying float vAlpha;
+
+            void main() {
+                vec3 pos = position;
+
+                // Upward drift
+                // Uses modulo to wrap particles around when they go off screen
+                float speed = 0.1 + aRandom * 0.1;
+                float yOffset = mod(uTime * speed + aRandom * 10.0, 2.0); // 0 to 2 range
+                pos.y = -1.0 + yOffset; // Move from -1 to 1
+
+                // Slight Horizontal waver
+                pos.x += sin(uTime * 0.5 + aRandom * 10.0) * 0.05;
+
+                vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+                gl_PointSize = aScale * (300.0 / -mvPosition.z);
+                gl_Position = projectionMatrix * mvPosition;
+
+                // Fade in/out based on height to avoid popping
+                // 1.0 at center, 0.0 at top/bottom edges
+                vAlpha = 1.0 - abs(pos.y * 1.5);
+                vAlpha = clamp(vAlpha, 0.0, 1.0);
+            }
+        `;
+
+    const particleFragmentShader = `
+            varying float vAlpha;
+            void main() {
+                // Circular particle
+                vec2 center = gl_PointCoord - 0.5;
+                float dist = length(center);
+                if (dist > 0.5) discard;
+
+                // Soft glow look
+                float glow = 1.0 - (dist * 2.0);
+                glow = pow(glow, 1.5);
+
+                // Golden/White color
+                gl_FragColor = vec4(1.0, 0.9, 0.7, vAlpha * glow * 0.6);
+            }
+        `;
+
+
+    // --- 5. INITIALIZATION ---
+
+    // A. Background Plane
+    const uniforms = {
+        uTime: { value: 0 },
+        uResolution: { value: new THREE.Vector2() },
+        uMouse: { value: new THREE.Vector2(0.5, 0.5) },
+        uDayHour: { value: getCurrentTimeFloat() }
+    };
+
+    const bgGeo = new THREE.PlaneGeometry(2, 2);
+    const bgMat = new THREE.ShaderMaterial({
+        vertexShader: bgVertexShader,
+        fragmentShader: bgFragmentShader,
+        uniforms: uniforms
+    });
+    const bgMesh = new THREE.Mesh(bgGeo, bgMat);
+    scene.add(bgMesh);
+
+    // B. Solar Particles
+    const particleCount = 60;
+    const particleGeo = new THREE.BufferGeometry();
+    const positions = new Float32Array(particleCount * 3);
+    const scales = new Float32Array(particleCount);
+    const randoms = new Float32Array(particleCount);
+
+    for(let i=0; i < particleCount; i++) {
+        // X: -1.5 to 1.5 (Spread wider than screen)
+        // Y: -1 to 1 (Cover height)
+        // Z: 0
+        positions[i*3] = (Math.random() - 0.5) * 3.0;
+        positions[i*3+1] = (Math.random() - 0.5) * 2.0;
+        positions[i*3+2] = 0.1; // Slightly in front
+
+        scales[i] = Math.random();
+        randoms[i] = Math.random();
+    }
+
+    particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    particleGeo.setAttribute('aScale', new THREE.BufferAttribute(scales, 1));
+    particleGeo.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
+
+    const particleMat = new THREE.ShaderMaterial({
+        vertexShader: particleVertexShader,
+        fragmentShader: particleFragmentShader,
+        uniforms: {
+            uTime: uniforms.uTime
+        },
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+    });
+
+    const particles = new THREE.Points(particleGeo, particleMat);
+    scene.add(particles);
+
+    // --- 6. HANDLERS ---
+
+    function onWindowResize() {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        renderer.setSize(w, h);
+        uniforms.uResolution.value.x = w;
+        uniforms.uResolution.value.y = h;
+    }
+    window.addEventListener('resize', onWindowResize);
+    onWindowResize();
+
+    // Smooth Mouse Interaction
+    const targetMouse = new THREE.Vector2(0.5, 0.5);
+
+    const updateMouse = (x, y) => {
+        targetMouse.x = x / window.innerWidth;
+        targetMouse.y = 1.0 - (y / window.innerHeight); // Invert Y
+    };
+
+    window.addEventListener('mousemove', (e) => updateMouse(e.clientX, e.clientY));
+    window.addEventListener('touchmove', (e) => {
+        if(e.touches.length > 0) updateMouse(e.touches[0].clientX, e.touches[0].clientY);
+    }, {passive: true});
+
+    // --- 7. ANIMATION LOOP ---
+    const clock = new THREE.Clock();
+
+    function animate() {
+        const time = clock.getElapsedTime();
+
+        // Slow, majestic time scale
+        uniforms.uTime.value = time * 0.3;
+
+        // Smooth mouse interpolation (Elastic feel)
+        uniforms.uMouse.value.x += (targetMouse.x - uniforms.uMouse.value.x) * 0.04;
+        uniforms.uMouse.value.y += (targetMouse.y - uniforms.uMouse.value.y) * 0.04;
+
+        renderer.render(scene, camera);
+        requestAnimationFrame(animate);
+    }
+
+    animate();
+
+</script>
+</body>
+</html>
